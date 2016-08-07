@@ -10,49 +10,57 @@ int main()
 {
     printf("computing sine and cosine tables\n");
 
-    const double pi = M_PI;          //4.0*atan(1.0);
-    const int Naddr = 12;            // width of rom address.
-    const int Nfine = 3;             // width of fine part of address.
-    const int Ncoarse = Naddr-Nfine; // width of coarse part of address.
+    const double pi = M_PI;
+    const int Naddr = 12;           // width of rom address.
+    const int Ncoarse = 10; 
+    const int Nfine = Naddr-Ncoarse;
     const int Dcoarse = 1<<Ncoarse;
     const int Dfine   = 1<<Nfine;
     const int D       = Dcoarse*Dfine;
     const int B = 10;               // width of rom output data.
-    const double A = pow(2.0, (B-1))-1.0; // Amplitude of the sine.
+    //const double A = pow(2.0, (B-1))-1.0; // Amplitude of the sine.
     const int Bsin = 16;            // number of bits in coarse sine rom.
-    const int Bcos = 8;            // number of bits in coarse cosine rom.
-    const double Asin = pow(2.0, (Bsin-1))-1.0; // Amplitude of the coarse sine.
-    const double Acos  = pow(2.0, (Bcos-1))-1.0;  // Amplitude of the coarse cosine.
+    const int Bcos = 8;             // number of bits in coarse cosine rom.
+    //const double Asin = pow(2.0, (Bsin-1))-1.0;
 
-    std::vector<double> pure_sin(D);
-    for(int i=0; i<D; i++) pure_sin[i] = A*sin((i+0.5)*pi/(2.0*D));
 
-    std::vector<double> quant_sin(D);
-    for(int i=0; i<D; i++) quant_sin[i] = A*sin((i+0.5)*pi/(2.0*D));
-    //for(int i=0; i<D; i++) std::cout << quant_sin[i] << "\n";
+    // Make a some reference signals.
+    std::vector<double> pure_sin(D+1);  for(int i=0; i<D+1; i++) pure_sin[i]  = sin((i+0.5)*pi/(2.0*D));
 
-    std::vector<double> coarse_sin(Dcoarse);
-    for(int i=0; i<Dcoarse; i++) coarse_sin[i] = Asin*sin((i+0.5)*pi/(2.0*Dcoarse));
+    // unquantized coarse tables
+    std::vector<double> coarse_sin(Dcoarse+1); for(int i=0; i<Dcoarse+1; i++) coarse_sin[i] = pure_sin[i*Dfine];
+    std::vector<double> coarse_cos(Dcoarse);   for(int i=0; i<Dcoarse; i++)   coarse_cos[i] = (coarse_sin[i+1] - coarse_sin[i])/Dfine;
 
-    std::vector<double> coarse_cos(Dcoarse);
-    for(int i=0; i<Dcoarse; i++) coarse_cos[i] = round(Acos*cos((i+0.5)*pi/(2.0*Dcoarse)));
+    //int bits_for_cos = ceil(log2(coarse_cos[0]));
+    //double cos_scale = pow(2.0, (Bcos-bits_for_cos));
+    //for(int i=0; i<Dcoarse; i++) coarse_cos[i] *= cos_scale;
+    //std::cout << "bits_for_cos = " << bits_for_cos << "\n";
 
-    std::vector<double> cos_prod(D);
+
+    std::vector<double> mul_sine(D);
     for(int i=0; i<Dcoarse; i++) {
         for(int j=0; j<Dfine; j++) {
-            cos_prod[i*Dfine+j] = 0.79*coarse_cos[i]*j + 8*coarse_sin[i];
+            mul_sine[i*Dfine+j] = j*coarse_cos[i] + coarse_sin[i];
         }
     }
 
+    std::vector<double> mul_sine_norm(D); for(int i=0; i<D; i++) mul_sine_norm[i] = mul_sine[i];
+    std::vector<double> error(D);         for(int i=0; i<D; i++) error[i] = mul_sine_norm[i] - pure_sin[i];
+    double max_error = 0.0; for(int i=0; i<D; i++) if (fabs(error[i])>fabs(max_error)) max_error = error[i];
+    std::cout << "max_error = " << max_error << "\n";
+
 
     FILE* gnuplotPipe = popen ("gnuplot -persistent", "w");
-    fprintf(gnuplotPipe, "plot '-' \n");
-    for (int i = 0; i < D; i++) fprintf(gnuplotPipe, "%lf\n", cos_prod[i]);
+    fprintf(gnuplotPipe, "plot '-' ps 0.4 lt 6\n");
+    //for (int i = 0; i < D/1; i++) fprintf(gnuplotPipe, "%lf\n", mul_sine_norm[i]);
+    for (int i = 0; i < D/1; i++) fprintf(gnuplotPipe, "%lf\n", error[i]);
+    //for (int i=0; i<Dcoarse+1; i++) fprintf(gnuplotPipe, "%lf\n", coarse_sin[i]);
     fprintf(gnuplotPipe, "e");
     pclose(gnuplotPipe);
 
 
     std::cout << "Dcoarse = " << Dcoarse << ", Dfine = " << Dfine << ", D = " << D << "\n";
+
 
 }
 
